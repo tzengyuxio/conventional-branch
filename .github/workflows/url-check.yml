@@ -1,0 +1,76 @@
+name: Check Website URLs
+
+on:
+  schedule:
+    - cron: '0 * * * *' # check every hour
+  workflow_dispatch: # manual trigger
+
+jobs:
+  check-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check URLs
+        id: check
+        run: | # add more URLs as needed
+          urls=(
+            "https://conventional-branch.github.io/"
+            "https://conventional-branch.github.io/#summary"
+            "https://conventional-branch.github.io/#specification"
+            "https://conventional-branch.github.io/about/"
+            "https://conventional-branch.github.io/zh/"
+          )
+
+          failed_urls=()
+
+          for url in "${urls[@]}"; do
+            echo "Checking $url"
+            status=$(curl -o /dev/null -s -w "%{http_code}\n" "$url")
+            if [[ "$status" -ne 200 ]]; then
+              echo "$url failed with status $status"
+              failed_urls+=("$url (HTTP $status)")
+            fi
+          done
+
+          if [ ${#failed_urls[@]} -ne 0 ]; then
+            echo "has_failed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "The following URLs are not reachable:"
+              for failed in "${failed_urls[@]}"; do
+                echo "- $failed"
+              done
+            } > issue.txt
+          else
+            echo "All URLs are reachable."
+            echo "has_failed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Issue if URLs failed
+        if: steps.check.outputs.has_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('issue.txt', 'utf8');
+            const title = '🚨 Some URLs are not reachable';
+            const assignee = 'shenxianpeng';
+
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'url-check'
+            });
+
+            const alreadyExists = existingIssues.data.some(issue => issue.title === title);
+            if (!alreadyExists) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                assignees: [assignee],
+                labels: ['url-check']
+              });
+            } else {
+              console.log('Issue already exists, skipping creation.');
+            }
