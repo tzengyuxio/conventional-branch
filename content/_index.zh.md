@@ -4,7 +4,7 @@ aliases: ["/zh/"]
 layout: single
 ---
 
-# 约定式分支
+# 约定式分支 1.0.0
 
 ## 概述
 
